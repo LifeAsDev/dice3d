@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="es">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Editor de Personajes y Caras</title>
+		<style>
+			body {
+				font-family: sans-serif;
+				padding: 20px;
+				background: #f2f2f2;
+			}
+			h2 {
+				margin-top: 30px;
+			}
+			form,
+			.list-section {
+				margin-bottom: 20px;
+				background: white;
+				padding: 15px;
+				border-radius: 8px;
+				box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+			}
+			label {
+				display: block;
+				margin-top: 10px;
+			}
+			input {
+				width: 100%;
+				padding: 8px;
+				margin-top: 5px;
+				border-radius: 4px;
+				border: 1px solid #ccc;
+			}
+			button {
+				margin-top: 10px;
+				margin-right: 5px;
+				padding: 8px 12px;
+				background: #007acc;
+				color: white;
+				border: none;
+				border-radius: 4px;
+				cursor: pointer;
+			}
+			.btn-danger {
+				background: #cc0000;
+			}
+			pre {
+				background: #222;
+				color: #0f0;
+				padding: 15px;
+				border-radius: 8px;
+				overflow-x: auto;
+			}
+			ul {
+				list-style: none;
+				padding: 0;
+			}
+			li {
+				margin-bottom: 10px;
+				background: #f9f9f9;
+				padding: 10px;
+				border-radius: 6px;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>Editor de Personajes y Caras de Dado</h1>
+
+		<h2>Agregar Cara de Dado</h2>
+		<form id="faceForm">
+			<label>Nombre</label>
+			<input type="text" id="faceName" required />
+
+			<label>Pip</label>
+			<input type="text" id="facePip" />
+
+			<label>Keywords (separadas por coma)</label>
+			<input type="text" id="faceKeywords" />
+
+			<label>Acción</label>
+			<input type="text" id="faceAction" />
+
+			<label>Rango</label>
+			<input type="text" id="faceRange" />
+
+			<label>Animation Frame</label>
+			<input type="number" id="faceAnimationFrame" />
+
+			<button type="submit">Agregar Cara</button>
+		</form>
+
+		<div class="list-section">
+			<h3>Caras</h3>
+			<ul id="facesList"></ul>
+		</div>
+
+		<h2>Agregar Personaje</h2>
+		<form id="characterForm">
+			<label>Nombre</label>
+			<input type="text" id="charName" required />
+
+			<label>HP</label>
+			<input type="number" id="charHp" required />
+
+			<label>IDs de Caras (hasta 6, separadas por coma)</label>
+			<input type="text" id="charFaceIds" placeholder="Ej: 1,2,3" />
+
+			<button type="submit">Agregar Personaje</button>
+		</form>
+
+		<div class="list-section">
+			<h3>Personajes</h3>
+			<ul id="charactersList"></ul>
+		</div>
+
+		<h2>JSON Generado</h2>
+		<h3>Caras</h3>
+		<pre id="facesOutput">{}</pre>
+
+		<h3>Personajes</h3>
+		<pre id="charactersOutput">{}</pre>
+
+		<script>
+			const faceForm = document.getElementById("faceForm");
+			const characterForm = document.getElementById("characterForm");
+			const facesOutput = document.getElementById("facesOutput");
+			const charactersOutput = document.getElementById("charactersOutput");
+			const facesList = document.getElementById("facesList");
+			const charactersList = document.getElementById("charactersList");
+
+			let faces = JSON.parse(localStorage.getItem("faces") || "[]");
+			let characters = JSON.parse(localStorage.getItem("characters") || "[]");
+
+			function updateCacheAndDisplay() {
+				localStorage.setItem("faces", JSON.stringify(faces));
+				localStorage.setItem("characters", JSON.stringify(characters));
+				facesOutput.textContent = JSON.stringify(faces, null, 2);
+				charactersOutput.textContent = JSON.stringify(characters, null, 2);
+				renderLists();
+			}
+
+			function renderLists() {
+				// Render caras
+				facesList.innerHTML = "";
+				faces.forEach((face, index) => {
+					const li = document.createElement("li");
+					li.textContent = `ID: ${face.id}, Nombre: ${face.name}, Frame: ${face.animationFrame}`;
+					const del = document.createElement("button");
+					del.textContent = "Eliminar";
+					del.className = "btn-danger";
+					del.onclick = () => {
+						faces.splice(index, 1);
+						updateCacheAndDisplay();
+					};
+					li.appendChild(del);
+					facesList.appendChild(li);
+				});
+
+				// Render personajes
+				charactersList.innerHTML = "";
+				characters.forEach((char, index) => {
+					const li = document.createElement("li");
+					li.textContent = `Nombre: ${char.name}, HP: ${
+						char.hp
+					}, Caras: ${char.faceIds.join(", ")}`;
+					const del = document.createElement("button");
+					del.textContent = "Eliminar";
+					del.className = "btn-danger";
+					del.onclick = () => {
+						characters.splice(index, 1);
+						updateCacheAndDisplay();
+					};
+					li.appendChild(del);
+					charactersList.appendChild(li);
+				});
+			}
+
+			faceForm.addEventListener("submit", (e) => {
+				e.preventDefault();
+				function getNextAvailableFaceId() {
+					const ids = faces.map((f) => f.id).sort((a, b) => a - b);
+					for (let i = 0; ; i++) {
+						if (!ids.includes(i)) return i;
+					}
+				}
+				const id = getNextAvailableFaceId();
+				const name = document.getElementById("faceName").value.trim();
+				const pip = document.getElementById("facePip").value.trim();
+				const keywords = document
+					.getElementById("faceKeywords")
+					.value.split(",")
+					.map((k) => k.trim())
+					.filter((k) => k);
+				const action = document.getElementById("faceAction").value.trim();
+				const range = document.getElementById("faceRange").value.trim();
+				const animationFrame =
+					parseInt(document.getElementById("faceAnimationFrame").value) || 0;
+
+				faces.push({ id, name, pip, keywords, action, range, animationFrame });
+				faceForm.reset();
+				updateCacheAndDisplay();
+			});
+
+			characterForm.addEventListener("submit", (e) => {
+				e.preventDefault();
+				const name = document.getElementById("charName").value.trim();
+				const hp = parseInt(document.getElementById("charHp").value);
+				const ids = document
+					.getElementById("charFaceIds")
+					.value.split(",")
+					.map((i) => parseInt(i.trim()))
+					.filter((n) => !isNaN(n));
+
+				if (ids.length > 6) {
+					alert("Solo puedes asignar hasta 6 caras por personaje.");
+					return;
+				}
+
+				characters.push({ name, hp, faceIds: ids });
+				characterForm.reset();
+				updateCacheAndDisplay();
+			});
+
+			// Inicial
+			updateCacheAndDisplay();
+		</script>
+	</body>
+</html>

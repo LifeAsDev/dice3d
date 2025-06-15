@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<link rel="icon" type="image/svg+xml" href="/vite.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Dice Overlay</title>
+		<style>
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+				overflow: hidden;
+				font-family: sans-serif;
+				background: green;
+			}
+
+			#scene-container {
+				position: fixed;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				z-index: 1;
+				pointer-events: none; /* para que no bloquee el click */
+			}
+
+			#ui-overlay {
+				position: fixed;
+				bottom: 20px;
+				left: 100px;
+				z-index: 2;
+				display: flex;
+				align-items: center;
+				gap: 20px;
+			}
+
+			#character-slot {
+				width: 100px;
+				height: 100px;
+				border: 2px dashed #aaa;
+				border-radius: 10px;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				position: relative;
+				overflow: hidden;
+			}
+
+			.dice-sprite {
+				width: 64px;
+				height: 64px;
+				display: none;
+				cursor: pointer;
+			}
+			#dice-sprite:hover {
+				z-index: 3;
+			}
+
+			#rollBtn {
+				padding: 10px 16px;
+				font-size: 1rem;
+				border: none;
+				border-radius: 8px;
+				background-color: #2196f3;
+				color: white;
+				cursor: pointer;
+			}
+
+			#rollBtn:hover {
+				background-color: #1976d2;
+			}
+			.characterSlots {
+				display: flex;
+				gap: 10px;
+				flex-direction: row;
+			}
+		</style>
+	</head>
+	<body>
+		<!-- Canvas 3D (ocupa toda la pantalla como overlay) -->
+		<div id="scene-container"></div>
+		<!-- UI flotante -->
+		<div id="ui-overlay">
+			<div id="characterSlots" class="characterSlots">
+				<div id="character-slot">
+					<img class="dice-sprite" id="dice-sprite1" alt="locked dice face" />
+				</div>
+				<div id="character-slot">
+					<img class="dice-sprite" id="dice-sprite2" alt="locked dice face" />
+				</div>
+				<div id="character-slot">
+					<img class="dice-sprite" id="dice-sprite3" alt="locked dice face" />
+				</div>
+			</div>
+			<button id="rollBtn">Girar dado</button>
+		</div>
+
+		<!-- 		<script src="dist/dice-scene.umd.cjs"></script>
+ -->
+		<script type="module" src="./main.js"></script>
+	</body>
+</html>
