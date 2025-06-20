@@ -34,7 +34,7 @@ const onFinishTransition = (face, index, unlockDiceCallBack) => {
 	diceSprite.classList.remove("hide");
 	diceSprite.classList.add("show");
 	diceSprite.style.display = "block";
-	diceSprite.style.opacity = 0.1;
+	diceSprite.style.opacity = 0.9;
 	diceSprite.onclick = () => unlockDice(index, unlockDiceCallBack, slotIndex);
 };
 
@@ -55,6 +55,7 @@ function getFirstAvailableSlot(dicesLockedSlots) {
 	return availableSlotIndex;
 }
 
-dice.initDice(0.7);
-dice.initDice(0.7);
-dice.initDice(0.7);
+dice.initDice(0.9);
+dice.initDice(0.9);
+dice.initDice(0.9);
+dice.initDice(0.9);

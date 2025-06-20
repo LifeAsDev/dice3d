@@ -7,18 +7,33 @@ const faceNormals = [
 	new THREE.Vector3(0, -1, 0),
 	new THREE.Vector3(0, 0, 1),
 	new THREE.Vector3(0, 0, -1),
-];
+]; // Rotación muy aleatoria
+const minSpin = 20;
+const maxSpin = 60;
+const randomSpin = () =>
+	(Math.random() * (maxSpin - minSpin) + minSpin) *
+	(Math.random() < 0.5 ? -1 : 1);
 
 export default class DiceScene {
-	constructor(clickDiceCallback, onFinishTransition, walls, helper = false) {
+	constructor(
+		clickDiceCallback,
+		onFinishTransition,
+		bounds = {
+			minX: -4.5,
+			maxX: 4.5,
+			minZ: -1.5,
+			maxZ: 2.5,
+		},
+		helper = false
+	) {
 		/* 		this.diceSprite = document.getElementById("dice-sprite");
 		 */ this.faceSelected = 1;
 		this.helper = helper;
-		this.walls = walls;
-		this.velocityThreshold = 0.05;
-		this.angularVelocityThreshold = 0.05;
+		this.bounds = bounds;
+		this.velocityThreshold = 0.1;
+		this.angularVelocityThreshold = 0.1;
 		this.diceSize = 1;
-		this.prop = [-220, 60];
+		this.prop = [-400, 80];
 		this.dices = [];
 
 		this.init();
@@ -33,6 +48,16 @@ export default class DiceScene {
 		];
 		this.clickDiceCallback = clickDiceCallback;
 		this.onFinishTransition = onFinishTransition;
+		this.results = {
+			1: 0,
+			2: 0,
+			3: 0,
+			4: 0,
+			5: 0,
+			6: 0,
+		};
+		this.onUnlocked = null;
+		this.onRollEnd = null;
 	}
 
 	init() {
@@ -74,23 +99,25 @@ export default class DiceScene {
 	onWindowResize() {
 		const containerWidth = window.innerWidth;
 		const containerHeight = window.innerHeight;
-		this.renderer.setSize(containerWidth, containerHeight);
-
 		const aspect = containerWidth / containerHeight;
 		const frustumSize = 10;
+
 		this.camera.left = (-frustumSize * aspect) / 2;
 		this.camera.right = (frustumSize * aspect) / 2;
 		this.camera.top = frustumSize / 2;
 		this.camera.bottom = -frustumSize / 2;
 		this.camera.updateProjectionMatrix();
+
+		this.renderer.setSize(containerWidth, containerHeight);
+
 		let index = 0;
-		for (const dice of this.dices) {
+		/* 	for (const dice of this.dices) {
 			if (dice.isLocked && dice.faceSelected !== null) {
 				const face = dice.getTopFace();
 				this.moveDiceToSlot(face, true, index); // Pasar 'true' para que sea instantáneo
 			}
 			index++;
-		}
+		} */
 	}
 
 	initPhysics() {
@@ -101,7 +128,7 @@ export default class DiceScene {
 		// Material rebotante y sin fricción
 		const wallMaterial = new CANNON.Material("wallMaterial");
 		const wallContact = new CANNON.ContactMaterial(wallMaterial, wallMaterial, {
-			friction: 0.0,
+			friction: 0.4,
 			restitution: 1.0,
 		});
 		this.world.addContactMaterial(wallContact);
@@ -114,62 +141,6 @@ export default class DiceScene {
 		});
 		this.groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
 		this.world.addBody(this.groundBody);
-
-		// Muros laterales con plano infinito (suficiente si no hay velocidades altas)
-		const wallDefs = [
-			{ pos: [0, 0, -2.5], rot: [0, 0, 0] }, // fondo
-			{ pos: [0, 0, 5], rot: [0, Math.PI, 0] }, // frente
-			{ pos: [-5, 0, 0], rot: [0, Math.PI / 2, 0] }, // izquierda
-			{ pos: [5, 0, 0], rot: [0, -Math.PI / 2, 0] }, // derecha
-		];
-		this.helpers = [];
-		const planeSize = 20;
-		wallDefs.forEach(({ pos, rot }) => {
-			const wall = new CANNON.Body({
-				mass: 0,
-				shape: new CANNON.Plane(),
-				material: wallMaterial,
-			});
-			wall.position.set(...pos);
-			wall.quaternion.setFromEuler(...rot);
-			this.world.addBody(wall);
-			if (this.helper) {
-				// --- Three.js Visualizer Creation ---
-				let geometry;
-				// Determine wall orientation based on 'pos'
-				// Walls along Z-axis (fondo, frente) will have pos[0] = 0
-				// Walls along X-axis (izquierda, derecha) will have pos[2] = 0 (and pos[0] != 0)
-				const isLeftOrRightWall = pos[0] !== 0;
-
-				if (isLeftOrRightWall) {
-					// For left/right walls (along X-axis), the plane is essentially vertical
-					// We want a box that is 'planeSize' long in Z, thin in X, and thin in Y (height)
-					geometry = new THREE.BoxGeometry(0.1, planeSize, 0.1); // Thickness (X), Height (Y), Length (Z)
-					// Note: The rotation will handle aligning it correctly later.
-					// We're making a tall, thin box that will be rotated.
-				} else {
-					// For front/back walls (along Z-axis), the plane is essentially vertical
-					// We want a box that is 'planeSize' long in X, thin in Y, and thin in Z
-					geometry = new THREE.BoxGeometry(planeSize, 0.1, 0.1); // Length (X), Height (Y), Thickness (Z)
-				}
-
-				const material = new THREE.MeshBasicMaterial({
-					color: 0x00ff00, // Green color for visibility
-					transparent: true,
-					opacity: 0.5,
-				});
-
-				const mesh = new THREE.Mesh(geometry, material);
-
-				// Crucial: Copy position and quaternion directly from the CANNON.js body
-				// This ensures perfect alignment and rotation.
-				mesh.position.copy(wall.position);
-				mesh.quaternion.copy(wall.quaternion);
-
-				this.scene.add(mesh);
-				this.helpers.push(mesh);
-			}
-		});
 	}
 
 	initDice(
@@ -181,7 +152,8 @@ export default class DiceScene {
 			[3, 1],
 			[4, 2],
 			[5, 2],
-		]
+		],
+		color = "rgb(91, 102, 159)"
 	) {
 		const loader = new THREE.TextureLoader();
 		const faceOrder = [1, 3, 6, 5, 2, 4]; // tus caras 1–6 en orden de cubo
@@ -212,6 +184,9 @@ export default class DiceScene {
 			canvas.height = size;
 			const ctx = canvas.getContext("2d");
 			ctx.drawImage(tex.image, 0, 0, size, size);
+			ctx.strokeStyle = color; // Cambia este valor al color que quieras (ej: rojo)
+			ctx.lineWidth = 15; // Cambia este valor al ancho del borde que quieras
+			ctx.strokeRect(0, 0, size, size); // Dibuja el rectángulo del borde
 
 			// Dibuja número encima
 			ctx.fillStyle = "#00ffe1";
@@ -266,38 +241,157 @@ export default class DiceScene {
 		this.dices.push(newDice);
 
 		newDice.diceBody.position.set(0, 2, 0);
-		newDice.diceBody.angularDamping = 0.1;
-		newDice.diceBody.linearDamping = 0.2;
 
-		const noFrictionMaterial = new CANNON.Material("noFriction");
-		newDice.diceBody.material = noFrictionMaterial;
-		this.groundBody.material = noFrictionMaterial;
-		this.world.addContactMaterial(
-			new CANNON.ContactMaterial(noFrictionMaterial, noFrictionMaterial, {
-				friction: 0.5,
-				restitution: 0,
-			})
+		// Materiales
+		const diceMaterial = new CANNON.Material("diceMaterial");
+		const groundMaterial = new CANNON.Material("groundMaterial");
+
+		// Asignar materiales
+		newDice.diceBody.material = diceMaterial;
+		this.groundBody.material = groundMaterial;
+
+		// Dado vs piso -> Con fricción
+		const diceGroundContact = new CANNON.ContactMaterial(
+			diceMaterial,
+			groundMaterial,
+			{
+				friction: 0.4, // Ajusta según necesidad
+				restitution: 0.2, // Rebote
+			}
 		);
+		this.world.addContactMaterial(diceGroundContact);
+
+		// Dado vs dado -> Sin fricción
+		const diceDiceContact = new CANNON.ContactMaterial(
+			diceMaterial,
+			diceMaterial,
+			{
+				friction: 0.0, // Sin fricción entre dados
+				restitution: 0.5, // Rebote
+			}
+		);
+		this.world.addContactMaterial(diceDiceContact);
+
+		newDice.diceBody.angularDamping = 0.1;
+		newDice.diceBody.linearDamping = 0.5;
+
+		newDice.diceBody.allowSleep = true;
+		newDice.diceBody.sleepSpeedLimit = 0.05; // velocidad mínima antes de que se duerma
+		newDice.diceBody.sleepTimeLimit = 0.5; // segundos en velocidad baja antes de dormir
 	}
 
 	animate() {
 		requestAnimationFrame(() => this.animate());
 		this.world.step(1 / 60);
-
+		let rollAlDices = true;
+		let i = -1;
 		for (const dice of this.dices) {
+			i++;
 			dice.update();
-			if (dice.isRolling) {
-				const linearVel = dice.diceBody.velocity.length();
-				const angularVel = dice.diceBody.angularVelocity.length();
+			const body = dice.diceBody;
+			const mesh = dice.diceMesh;
+
+			// Clamp posición X
+			if (body.position.x < this.bounds.minX) {
+				body.position.x = this.bounds.minX;
+			}
+			if (body.position.x > this.bounds.maxX) {
+				body.position.x = this.bounds.maxX;
+			}
+
+			// Clamp posición Z
+			if (body.position.z < this.bounds.minZ) {
+				body.position.z = this.bounds.minZ;
+			}
+			if (body.position.z > this.bounds.maxZ) {
+				body.position.z = this.bounds.maxZ;
+			}
+			const linearVel = dice.diceBody.velocity.length();
+			const angularVel = dice.diceBody.angularVelocity.length();
+			if (linearVel < 0.05 && angularVel < 0.05) {
+				dice.diceBody.sleep(); // ✅ Forzar sleep manual
+			}
+			if (dice.isRolling && !dice.isLocked) {
 				if (
 					linearVel < this.velocityThreshold &&
 					angularVel < this.angularVelocityThreshold
 				) {
 					dice.isRolling = false;
+					if (this.onRollEnd) this.onRollEnd(i);
+					const result = dice.getTopFace();
+
+					// ✅ Contador
+					if (this.results[result] !== undefined) {
+						this.results[result]++;
+					} else {
+						this.results[result] = 1;
+					}
+					/* 					console.log(this.results);
+					 */
+				} else {
+					rollAlDices = false;
 				}
 			}
-		}
+			if (!dice.isRolling && dice.corr) {
+				if (dice.corr.rollIndex === dice.rollIndex) {
+					dice.diceBody.position.set(...dice.corr.position);
+					dice.diceBody.quaternion.set(...dice.corr.quaternion);
+					dice.diceBody.velocity.set(...dice.corr.velocity);
+					dice.diceBody.angularVelocity.set(...dice.corr.angularVelocity);
 
+					if (!dice.isLocked) {
+						dice.animation = true;
+						let startTime = 0;
+						let duration = 50; // Duración de la interpolación en milisegundos
+						let startPosition = dice.diceMesh.position.clone();
+						let targetPosition = new THREE.Vector3(...dice.corr.position);
+						let targetQuaternion = new THREE.Quaternion(
+							...dice.corr.quaternion
+						);
+
+						const animateLerp = (now) => {
+							if (!startTime) startTime = now;
+							const elapsed = now - startTime;
+							const t = Math.min(elapsed / duration, 1);
+
+							function easeOutCubic(t) {
+								return 1 - Math.pow(1 - t, 3);
+							}
+							function easeOutQuad(x) {
+								return 1 - (1 - x) * (1 - x);
+							}
+							function easeOutQuart(t) {
+								return 1 - Math.pow(1 - t, 4);
+							}
+							function easeOutSine(x) {
+								return Math.sin((x * Math.PI) / 2);
+							}
+
+							const easedT = easeOutSine(t);
+							dice.diceMesh.position.lerpVectors(
+								startPosition,
+								targetPosition,
+								easedT
+							);
+
+							dice.diceMesh.quaternion.slerp(targetQuaternion, easedT);
+
+							if (t < 1 && dice.animation) {
+								// Agregamos `dice.animation` como condición para continuar
+								requestAnimationFrame(animateLerp);
+							} else {
+								dice.animation = false;
+								// Aquí se ejecutaría la lógica para "desbloquear" el dado o finalizar su estado de rodar.
+							}
+						};
+						requestAnimationFrame(animateLerp);
+					}
+				}
+				dice.corr = null;
+			}
+		}
+		/* 		if (rollAlDices) this.rollDice();
+		 */
 		this.renderer.render(this.scene, this.camera);
 	}
 	rotateDiceToFace(faceIndex) {
@@ -323,7 +417,8 @@ export default class DiceScene {
 	bindEvents() {
 		/* 	this.rollBtn.onclick = () => this.rollDice();
 		 */
-		window.addEventListener("click", (event) => this.onClick(event));
+		window.addEventListener("mousedown", (event) => this.onClick(event));
+		window.addEventListener("contextmenu", (e) => e.preventDefault());
 
 		window.addEventListener("keydown", (event) => {
 			const num = parseInt(event.key);
@@ -369,26 +464,28 @@ export default class DiceScene {
 		mesh.quaternion.copy(body.quaternion); // Sincroniza visualmente con el mesh
 	}
 
-	rollDice() {
-		for (const dice of this.dices) {
-			if (dice.isLocked) {
-				continue;
-			}
+	rollDice(dices = Array.from({ length: this.dices.length }, (_, i) => i)) {
+		for (const diceIndex of dices) {
+			const dice = this.dices[diceIndex];
+
+			if (dice.isLocked) continue;
 			dice.isRolling = true;
-			const randomRange = (min, max) => Math.random() * (max - min) + min;
-			const minSpeed = 30;
-			const maxSpeed = 40;
+			dice.diceBody.wakeUp();
+			// Resetear fuerzas
 			dice.diceBody.velocity.set(0, 0, 0);
 			dice.diceBody.angularVelocity.set(0, 0, 0);
 			dice.diceBody.force.set(0, 0, 0);
 			dice.diceBody.torque.set(0, 0, 0);
+
+			// Posicionar ligeramente elevado
 			dice.diceBody.position.y = 1;
+
 			dice.diceBody.velocity.set(0, this.prop[1], 0);
-			dice.diceBody.angularVelocity.set(
-				(Math.random() < 0.5 ? -1 : 1) * randomRange(minSpeed, maxSpeed),
-				(Math.random() < 0.5 ? -1 : 1) * randomRange(minSpeed, maxSpeed),
-				(Math.random() < 0.5 ? -1 : 1) * randomRange(minSpeed, maxSpeed)
-			);
+			const angularVelocityRandom = [randomSpin(), randomSpin(), randomSpin()];
+
+			dice.diceBody.angularVelocity.set(...angularVelocityRandom);
+			dice.rollIndex++;
+			dice.animate = false;
 		}
 	}
 
@@ -412,8 +509,16 @@ export default class DiceScene {
 			const diceIndex = this.dices.findIndex((diceInstance) => {
 				return diceInstance.diceMesh === clickedMesh;
 			});
-
-			if (
+			if (event.button === 2) {
+				console.log(
+					"vel:",
+					selectedDiceInstance.diceBody.velocity.length().toFixed(3),
+					"ang:",
+					selectedDiceInstance.diceBody.angularVelocity.length().toFixed(3),
+					"sleep:",
+					selectedDiceInstance.diceBody.sleepState
+				);
+			} else if (
 				selectedDiceInstance &&
 				!selectedDiceInstance.isLocked &&
 				!selectedDiceInstance.isRolling
@@ -423,10 +528,10 @@ export default class DiceScene {
 		}
 	}
 
-	lockDice(index, face) {
+	lockDice(index, face, instant = false) {
 		const diceInstance = this.dices[index];
-		if (!diceInstance || diceInstance.isLocked || diceInstance.isRolling)
-			return;
+		diceInstance.diceBody.quaternion.normalize();
+
 		diceInstance.isLocked = true;
 		diceInstance.isRolling = false;
 		diceInstance.diceBody.velocity.setZero();
@@ -436,7 +541,81 @@ export default class DiceScene {
 		diceInstance.diceBody.collisionResponse = false;
 
 		diceInstance.faceSelected = face;
-		this.moveDiceToSlot(face, false, index);
+		this.moveDiceToSlot(face, instant, index);
+	}
+
+	applyFullRemoteDiceData(dataString, type = "default") {
+		let parsedData;
+		try {
+			parsedData = JSON.parse(dataString);
+		} catch (e) {
+			console.error("Failed to parse dice data:", e);
+			return;
+		}
+
+		for (const remoteDice of parsedData) {
+			const dice = this.dices[remoteDice.index];
+			if (!dice) continue;
+
+			if (type === "correction") {
+				dice.corr = {};
+				dice.corr.position = remoteDice.position;
+				dice.corr.quaternion = remoteDice.quaternion;
+				dice.corr.velocity = remoteDice.velocity;
+				dice.corr.angularVelocity = remoteDice.angularVelocity;
+				dice.corr.rollIndex = remoteDice.rollIndex;
+			} else {
+				if (!dice.isLocked) {
+					dice.diceBody.wakeUp();
+				}
+				dice.isRolling = true;
+				dice.animate = false;
+				dice.diceBody.velocity.set(...remoteDice.velocity);
+				dice.diceBody.angularVelocity.set(...remoteDice.angularVelocity);
+				dice.diceBody.position.y = 1;
+				dice.diceBody.quaternion.set(...remoteDice.quaternion);
+				dice.rollIndex = remoteDice.rollIndex;
+
+				if (type === "impulse") {
+				}
+				if (type !== "impulse") {
+					dice.diceBody.position.set(...remoteDice.position);
+				}
+			}
+		}
+	}
+
+	applyRemoteData(data, correctionStrength = 10) {
+		let parsedData;
+		try {
+			parsedData = JSON.parse(data);
+		} catch (e) {
+			console.error("Failed to parse data", e);
+			return;
+		}
+
+		for (const remoteDice of parsedData) {
+			const dice = this.dices[remoteDice.index];
+			if (!dice || !dice.diceBody) continue;
+
+			const linearVel = dice.diceBody.velocity.length();
+			const angularVel = dice.diceBody.angularVelocity.length();
+
+			// Solo corregir si el dado ya se está deteniendo
+			if (linearVel > 1 || angularVel > 1) continue;
+
+			const posArray = remoteDice.position;
+			const quatArray = remoteDice.quaternion;
+
+			const targetPos = new CANNON.Vec3(...posArray);
+			const targetQuat = new CANNON.Quaternion(...quatArray);
+
+			// Corrección de posición basada en error
+			dice.diceBody.position.set(targetPos);
+
+			// Aplicar la rotación directamente (sin suavizado)
+			dice.diceBody.quaternion.set(targetQuat);
+		}
 	}
 
 	showSprite(face, index) {}
@@ -450,7 +629,6 @@ export default class DiceScene {
 			new THREE.Vector3(0, 1, 0), // +Z (Frontal) - su "arriba" es el eje Y
 			new THREE.Vector3(0, 1, 0), // -Z (Trasera) - su "arriba" es el eje Y
 		];
-		console.log(`Top face: ${face - 1}`);
 
 		const cameraLookDirection = new THREE.Vector3();
 		this.camera.getWorldDirection(cameraLookDirection);
@@ -498,47 +676,66 @@ export default class DiceScene {
 
 		return rotationQuaternion;
 	}
+
 	unlockDice(index, realocated = false) {
 		const dice = this.dices[index];
-		dice.isRolling = false;
+		dice.isRolling = true;
 
 		// Encontrar una posición libre
+		if (realocated) {
+			const freePosition = this.findFreePosition(index);
+
+			dice.diceBody.position.set(
+				freePosition.x,
+				freePosition.y,
+				freePosition.z
+			);
+		}
 		let targetPosition = dice.diceBody.position.clone();
-		if (realocated) targetPosition = this.findFreePosition(index);
 
 		// Posición actual
 		const startPos = dice.diceMesh.position.clone();
 		const endPos = targetPosition.clone();
 		const duration = 300; // milisegundos
 		let startTime = null;
+		const cannonQuat = dice.diceBody.quaternion;
 
+		// Create a new THREE.Quaternion and copy the values from the Cannon.js quaternion
+		const endQuat = new THREE.Quaternion(
+			cannonQuat.x,
+			cannonQuat.y,
+			cannonQuat.z,
+			cannonQuat.w
+		);
 		const animate = (time) => {
 			if (!startTime) startTime = time;
 			const elapsed = time - startTime;
 			const t = Math.min(elapsed / duration, 1);
 
+			function easeOutSine(x) {
+				return Math.sin((x * Math.PI) / 2);
+			}
+			const easeT = easeOutSine(t);
 			// Interpolación lineal
-			const x = startPos.x + (endPos.x - startPos.x) * t;
-			const y = startPos.y + (endPos.y - startPos.y) * t;
-			const z = startPos.z + (endPos.z - startPos.z) * t;
+			const x = startPos.x + (endPos.x - startPos.x) * easeT;
+			const y = startPos.y + (endPos.y - startPos.y) * easeT;
+			const z = startPos.z + (endPos.z - startPos.z) * easeT;
 
 			dice.diceMesh.position.set(x, y, z);
+			dice.diceMesh.quaternion.slerp(endQuat, easeT);
 
 			if (t < 1) {
 				requestAnimationFrame(animate);
 			} else {
-				dice.diceBody.position.set(
-					targetPosition.x,
-					targetPosition.y,
-					targetPosition.z
-				);
 				dice.diceBody.collisionResponse = true;
-
 				dice.diceBody.velocity.setZero();
 				dice.diceBody.angularVelocity.setZero();
 				dice.diceBody.type = CANNON.Body.DYNAMIC;
 				dice.diceBody.wakeUp();
 				dice.isLocked = false;
+				dice.isRolling = false;
+
+				this.onUnlocked(index);
 			}
 		};
 
@@ -547,7 +744,7 @@ export default class DiceScene {
 
 	// Función para encontrar una posición libre
 	findFreePosition(currentIndex) {
-		const radius = 1.2; // Radio mínimo de separación
+		const radius = 1.5; // Radio mínimo de separación
 		let position;
 		let maxTries = 100;
 		let tries = 0;
@@ -593,6 +790,7 @@ export default class DiceScene {
 		if (instant) {
 			diceInstance.diceMesh.position.copy(vector);
 			diceInstance.diceMesh.quaternion.copy(quat);
+			this.onFinishTransition(face, index, this.unlockDice.bind(this));
 
 			return; // Termina la función aquí para evitar la animación
 		}
@@ -629,6 +827,9 @@ export default class DiceScene {
 
 		requestAnimationFrame(animateLerp);
 	}
+	setOnUnlocked(callback) {
+		this.onUnlocked = callback;
+	}
 }
 
 class Dice {
@@ -657,14 +858,14 @@ class Dice {
 		this.diceMesh = new THREE.Mesh(geometry, materials);
 		this.diceMesh.position.copy(initialPosition);
 		this.scene.add(this.diceMesh);
-
+		this.corr = null;
 		// 4. (Opcional) Cuerpo físico de Cannon-ES
 		// Si estás integrando física, necesitas un cuerpo rígido asociado a la malla.
 		const shape = new CANNON.Box(
 			new CANNON.Vec3(this.size / 2, this.size / 2, this.size / 2)
 		);
 		this.diceBody = new CANNON.Body({
-			mass: 1, // Masa del dado
+			mass: 50, // Masa del dado
 			shape: shape,
 			position: new CANNON.Vec3(
 				initialPosition.x,
@@ -674,13 +875,15 @@ class Dice {
 			material: new CANNON.Material(), // Puedes definir un material físico
 		});
 		this.world.addBody(this.diceBody);
-
+		this.disablePhysics;
+		this.animation = false;
+		this.rollIndex = 0;
 		// Asegúrate de sincronizar la malla con el cuerpo físico en el bucle de animación
 	}
 
 	// Método para actualizar la posición y rotación del dado a partir del cuerpo físico
 	update() {
-		if (!this.isLocked) {
+		if (!this.isLocked && !this.animation) {
 			this.diceMesh.position.copy(this.diceBody.position);
 			this.diceMesh.quaternion.copy(this.diceBody.quaternion);
 		}
