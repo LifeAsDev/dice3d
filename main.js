@@ -55,7 +55,8 @@ function getFirstAvailableSlot(dicesLockedSlots) {
 	return availableSlotIndex;
 }
 
-dice.initDice(0.9);
-dice.initDice(0.9);
-dice.initDice(0.9);
-dice.initDice(0.9);
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+
+dice.onRollEnd = (index, face) => {
+	console.log(index, face);
+};

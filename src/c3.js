@@ -115,3 +115,11 @@ for (const remoteDice of parsedData) {
 	i++;
 }
 
+function axialToWorldPointy({ q, r }, size) {
+	let x = Math.sqrt(3) * q + (Math.sqrt(3) / 2) * r;
+	let y = (3 / 2) * r;
+
+	x = x * size;
+	y = y * size;
+	return { x, y };
+}
