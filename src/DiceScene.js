@@ -253,6 +253,7 @@ export default class DiceScene {
 			materials,
 			lockedSize
 		);
+		newDice.color = color;
 		this.dices.set(newDice.id, newDice);
 
 		newDice.diceBody.position.set(0, 2, 0);
@@ -312,7 +313,6 @@ export default class DiceScene {
 				const material = new THREE.MeshBasicMaterial({
 					map: fallbackTexture,
 				});
-
 				loader.load(
 					`/dice${diceAnimationFrame}.png`,
 					(tex) => {
@@ -386,7 +386,7 @@ export default class DiceScene {
 		if (num > 0) {
 			ctx.textAlign = "center";
 			ctx.textBaseline = "middle";
-			ctx.fillText(num.toString(), size / 2, size / 2);
+			ctx.fillText(num.toString(), 100, 100);
 		}
 
 		const texture = new THREE.CanvasTexture(canvas);
@@ -395,6 +395,7 @@ export default class DiceScene {
 		texture.colorSpace = THREE.SRGBColorSpace;
 		return texture;
 	}
+
 	destroyDice(diceId) {
 		const dice = this.dices.get(diceId);
 		if (!dice) return;
