@@ -38,7 +38,12 @@ const onFinishTransition = (face, index, unlockDiceCallBack) => {
 	diceSprite.onclick = () => unlockDice(index, unlockDiceCallBack, slotIndex);
 };
 
-const dice = new DiceScene(lockDice, onFinishTransition, undefined, true);
+const dice = new DiceScene(lockDice, {
+	minX: -6,
+	maxX: 4.5,
+	minZ: -1.5,
+	maxZ: 2.5,
+});
 rollBtn.onclick = () => {
 	dice.rollDice();
 };
@@ -56,7 +61,18 @@ function getFirstAvailableSlot(dicesLockedSlots) {
 }
 
 dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
+dice.initDice(0.9, undefined, "rgb(91, 102, 159)");
 
-dice.onRollEnd = (index, face) => {
-	console.log(index, face);
-};
+dice.onRollEnd = (index, face) => {};

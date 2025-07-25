@@ -8,8 +8,8 @@ const faceNormals = [
 	new THREE.Vector3(0, 0, 1),
 	new THREE.Vector3(0, 0, -1),
 ]; // Rotación muy aleatoria
-const minSpin = 20;
-const maxSpin = 60;
+const minSpin = 5;
+const maxSpin = 10;
 const randomSpin = () =>
 	(Math.random() * (maxSpin - minSpin) + minSpin) *
 	(Math.random() < 0.5 ? -1 : 1);
@@ -18,7 +18,6 @@ let nextDiceId = 0;
 export default class DiceScene {
 	constructor(
 		clickDiceCallback,
-		onFinishTransition,
 		bounds = {
 			minX: -4.5,
 			maxX: 4.5,
@@ -31,13 +30,13 @@ export default class DiceScene {
 		 */ this.faceSelected = 1;
 		this.helper = helper;
 		this.bounds = bounds;
-		this.velocityThreshold = 0.01;
-		this.angularVelocityThreshold = 0.01;
+		this.velocityThreshold = 0.1;
+		this.angularVelocityThreshold = 0.1;
 		this.diceSize = 1;
-		this.prop = [-400, 80];
+		this.prop = [-100, 40];
 		this.dices = new Map();
 		this.init();
-
+		this.onLocked = null;
 		this.faceNormals = [
 			new THREE.Vector3(1, 0, 0),
 			new THREE.Vector3(-1, 0, 0),
@@ -47,7 +46,6 @@ export default class DiceScene {
 			new THREE.Vector3(0, 0, -1),
 		];
 		this.clickDiceCallback = clickDiceCallback;
-		this.onFinishTransition = onFinishTransition;
 		this.results = {
 			1: 0,
 			2: 0,
@@ -153,7 +151,8 @@ export default class DiceScene {
 			[4, 2],
 			[5, 2],
 		],
-		color = "rgb(91, 102, 159)"
+		color = "rgb(91, 102, 159)",
+		lockedSize = 1
 	) {
 		const loader = new THREE.TextureLoader();
 		const faceOrder = [1, 3, 6, 5, 2, 4]; // tus caras 1–6 en orden de cubo
@@ -165,6 +164,9 @@ export default class DiceScene {
 			canvas.width = size;
 			canvas.height = size;
 			const ctx = canvas.getContext("2d");
+			ctx.strokeStyle = color; // Cambia este valor al color que quieras (ej: rojo)
+			ctx.lineWidth = 15; // Cambia este valor al ancho del borde que quieras
+			ctx.strokeRect(0, 0, size, size); // Dibuja el rectángulo del borde
 
 			ctx.fillStyle = "white";
 			ctx.font = "bold 96px LeagueSpartan-Bold";
@@ -173,8 +175,8 @@ export default class DiceScene {
 			ctx.fillText(num.toString(), size / 2, size / 2);
 			const texture = new THREE.CanvasTexture(canvas);
 
-			texture.minFilter = THREE.NearestFilter;
-			texture.magFilter = THREE.NearestFilter;
+			texture.minFilter = THREE.LinearFilter;
+			texture.magFilter = THREE.LinearFilter;
 			return texture;
 		}
 
@@ -205,8 +207,8 @@ export default class DiceScene {
 
 			const texture = new THREE.CanvasTexture(canvas);
 
-			texture.minFilter = THREE.NearestFilter;
-			texture.magFilter = THREE.NearestFilter;
+			texture.minFilter = THREE.LinearFilter;
+			texture.magFilter = THREE.LinearFilter;
 			texture.colorSpace = THREE.SRGBColorSpace;
 
 			return texture;
@@ -224,7 +226,7 @@ export default class DiceScene {
 				`/dice${diceAnimationFrame}.png`,
 				(tex) => {
 					tex.minFilter = THREE.LinearFilter;
-					tex.magFilter = THREE.NearestFilter;
+					tex.magFilter = THREE.LinearFilter;
 					tex.needsUpdate = true;
 
 					// Si carga bien, reemplazamos la textura del material
@@ -248,7 +250,8 @@ export default class DiceScene {
 			this.world,
 			diceSize,
 			new THREE.Vector3(0, 2, 0),
-			materials
+			materials,
+			lockedSize
 		);
 		this.dices.set(newDice.id, newDice);
 
@@ -267,8 +270,8 @@ export default class DiceScene {
 			diceMaterial,
 			groundMaterial,
 			{
-				friction: 0.4, // Ajusta según necesidad
-				restitution: 0.2, // Rebote
+				friction: 0.8, // Ajusta según necesidad
+				restitution: 0, // Rebote
 			}
 		);
 		this.world.addContactMaterial(diceGroundContact);
@@ -279,7 +282,7 @@ export default class DiceScene {
 			diceMaterial,
 			{
 				friction: 0.0, // Sin fricción entre dados
-				restitution: 0.5, // Rebote
+				restitution: 1, // Rebote
 			}
 		);
 		this.world.addContactMaterial(diceDiceContact);
@@ -288,8 +291,9 @@ export default class DiceScene {
 		newDice.diceBody.linearDamping = 0.5;
 
 		newDice.diceBody.allowSleep = true;
-		newDice.diceBody.sleepSpeedLimit = 0.05; // velocidad mínima antes de que se duerma
-		newDice.diceBody.sleepTimeLimit = 0.5; // segundos en velocidad baja antes de dormir
+		newDice.diceBody.sleepSpeedLimit = 0.05;
+		newDice.diceBody.sleepTimeLimit = 0.5;
+		return newDice.id;
 	}
 
 	destroyDice(diceId) {
@@ -306,6 +310,20 @@ export default class DiceScene {
 		});
 
 		this.dices.delete(diceId);
+	}
+
+	destroyAllDiceByOwner(ownerId) {
+		const toDelete = [];
+
+		for (const [diceId, dice] of this.dices.entries()) {
+			if (dice.ownerId === ownerId) {
+				toDelete.push(diceId);
+			}
+		}
+
+		for (const diceId of toDelete) {
+			this.destroyDice(diceId);
+		}
 	}
 
 	animate() {
@@ -336,17 +354,32 @@ export default class DiceScene {
 			}
 			const linearVel = dice.diceBody.velocity.length();
 			const angularVel = dice.diceBody.angularVelocity.length();
-			if (linearVel < 0.05 && angularVel < 0.05) {
+
+			function updateDiceScale(dice) {
+				const y = dice.diceBody.position.y;
+
+				// Lógica: cuanto más alto, más grande, empezando desde dice.size
+				// Escalamos un 20% adicional como máximo por altura
+				const growthFactor = 0.1; // Aumenta hasta un 20% en altura
+				const cappedY = Math.min(y, 5); // Altura máxima donde el crecimiento se detiene
+				const scale = dice.size * (1 + cappedY * growthFactor);
+
+				dice.diceMesh.scale.set(scale, scale, scale);
+			}
+
+			if (linearVel < 0.01 && angularVel < 0.01) {
 				dice.diceBody.sleep(); // ✅ Forzar sleep manual
 			}
 			if (dice.isRolling && !dice.isLocked) {
+				updateDiceScale(dice);
+
 				if (
 					linearVel < this.velocityThreshold &&
 					angularVel < this.angularVelocityThreshold
 				) {
 					dice.isRolling = false;
 					const result = dice.getTopFace();
-					if (this.onRollEnd) this.onRollEnd(i, result);
+					if (this.onRollEnd) this.onRollEnd(id, result);
 
 					// ✅ Contador
 					if (this.results[result] !== undefined) {
@@ -418,7 +451,48 @@ export default class DiceScene {
 				dice.corr = null;
 			}
 		}
-		/* 		if (rollAlDices) this.rollDice();
+		const diceArray = Array.from(this.dices.values());
+
+		for (let i = 0; i < diceArray.length; i++) {
+			const diceA = diceArray[i];
+			const bodyA = diceA.diceBody;
+			if (diceA.isLocked) continue;
+
+			for (let j = i + 1; j < diceArray.length; j++) {
+				const diceB = diceArray[j];
+				const bodyB = diceB.diceBody;
+
+				const dist = bodyA.position.distanceTo(bodyB.position);
+				const minDist = (diceA.size + diceB.size) * 0.7;
+
+				/* if (dist < minDist) {
+					console.log("Collision detected between dice A and B");
+
+					const dir = new CANNON.Vec3()
+						.copy(bodyA.position)
+						.vsub(bodyB.position);
+					dir.normalize();
+
+					const impulseMagnitude = 30;
+
+					// Impulso con componente hacia arriba agregada
+					const impulse = new CANNON.Vec3(
+						dir.x * impulseMagnitude,
+						impulseMagnitude, // impulso hacia arriba (ajustable)
+						dir.z * impulseMagnitude
+					);
+
+					// Solo mover el dado con mayor altura (eje Y)
+					const higherBody =
+						bodyA.position.y > bodyB.position.y ? bodyA : bodyB;
+
+					higherBody.wakeUp();
+					higherBody.applyImpulse(impulse, higherBody.position);
+				} */
+			}
+		}
+
+		/* 	if (rollAlDices) this.rollDice();
 		 */
 		this.renderer.render(this.scene, this.camera);
 	}
@@ -530,7 +604,11 @@ export default class DiceScene {
 
 		const raycaster = new THREE.Raycaster();
 		raycaster.setFromCamera(mouse, this.camera);
-		const diceMeshes = this.dices.map((diceInstance) => diceInstance.diceMesh);
+
+		const diceMeshes = Array.from(this.dices.values()).map(
+			(diceInstance) => diceInstance.diceMesh
+		);
+
 		const intersects = raycaster.intersectObjects(diceMeshes, true);
 
 		if (intersects.length > 0) {
@@ -541,14 +619,6 @@ export default class DiceScene {
 				(diceInstance) => diceInstance.diceMesh === clickedMesh
 			);
 			if (event.button === 2) {
-				console.log(
-					"vel:",
-					selectedDiceInstance.diceBody.velocity.length().toFixed(3),
-					"ang:",
-					selectedDiceInstance.diceBody.angularVelocity.length().toFixed(3),
-					"sleep:",
-					selectedDiceInstance.diceBody.sleepState
-				);
 			} else if (
 				selectedDiceInstance &&
 				!selectedDiceInstance.isLocked &&
@@ -572,7 +642,10 @@ export default class DiceScene {
 		const raycaster = new THREE.Raycaster();
 		raycaster.setFromCamera(mouse, this.camera);
 
-		const diceMeshes = this.dices.map((diceInstance) => diceInstance.diceMesh);
+		const diceMeshes = Array.from(this.dices.values()).map(
+			(diceInstance) => diceInstance.diceMesh
+		);
+
 		const intersects = raycaster.intersectObjects(diceMeshes, true);
 
 		if (intersects.length > 0) {
@@ -716,6 +789,20 @@ export default class DiceScene {
 		const dice = this.dices.get(diceId);
 		dice.isRolling = true;
 
+		const canvas = document.querySelector("#scene-container canvas");
+		const rect = canvas.getBoundingClientRect();
+
+		const screenX = dice.targetX;
+		const screenY = dice.targetY;
+
+		// Normaliza usando los bordes reales del canvas
+		const ndcX = ((screenX - rect.left) / rect.width) * 2 - 1;
+		const ndcY = -((screenY - rect.top) / rect.height) * 2 + 1;
+
+		// Ahora usás esos valores
+		let vector = new THREE.Vector3(ndcX, ndcY, 0);
+		vector.unproject(this.camera);
+
 		// Encontrar una posición libre
 		if (realocated) {
 			const freePosition = this.findFreePosition(diceId);
@@ -727,9 +814,12 @@ export default class DiceScene {
 			);
 		}
 		let targetPosition = dice.diceBody.position.clone();
+		dice.diceMesh.position.set(vector.x, vector.y, vector.z);
 
+		const startScale = dice.diceMesh.scale.x; // Escala actual
+		const endScale = dice.size;
 		// Posición actual
-		const startPos = dice.diceMesh.position.clone();
+		const startPos = vector.clone();
 		const endPos = targetPosition.clone();
 		const duration = 300; // milisegundos
 		let startTime = null;
@@ -758,6 +848,8 @@ export default class DiceScene {
 
 			dice.diceMesh.position.set(x, y, z);
 			dice.diceMesh.quaternion.slerp(endQuat, easeT);
+			const newScale = startScale + (endScale - startScale) * easeT;
+			dice.diceMesh.scale.set(newScale, newScale, newScale);
 
 			if (t < 1) {
 				requestAnimationFrame(animate);
@@ -779,7 +871,9 @@ export default class DiceScene {
 
 	// Función para encontrar una posición libre
 	findFreePosition(currentId) {
-		const radius = 1.5; // Radio mínimo de separación
+		const size = this.dices.get(currentId).size;
+		const margin = 0.1;
+		const radius = (Math.sqrt(2) * size) / 2 + margin;
 		let position;
 		let maxTries = 100;
 		let tries = 0;
@@ -831,7 +925,13 @@ export default class DiceScene {
 		if (instant) {
 			diceInstance.diceMesh.position.copy(vector);
 			diceInstance.diceMesh.quaternion.copy(quat);
-			this.onFinishTransition(face, diceId, this.unlockDice.bind(this));
+			diceInstance.diceMesh.scale.set(
+				diceInstance.lockedSize,
+				diceInstance.lockedSize,
+				diceInstance.lockedSize
+			);
+			if (this.onLocked)
+				this.onLocked(face, diceId, this.unlockDice.bind(this));
 
 			return; // Termina la función aquí para evitar la animación
 		}
@@ -859,10 +959,16 @@ export default class DiceScene {
 
 			diceInstance.diceMesh.quaternion.slerp(quat, easedT);
 
+			const currentScale = diceInstance.diceMesh.scale.x; // Asumo escala uniforme
+			const targetScale = diceInstance.lockedSize;
+
+			const newScale = currentScale + (targetScale - currentScale) * easedT;
+			diceInstance.diceMesh.scale.set(newScale, newScale, newScale);
 			if (t < 1) {
 				requestAnimationFrame(animateLerp);
 			} else {
-				this.onFinishTransition(face, diceId, this.unlockDice.bind(this));
+				if (this.onLocked)
+					this.onLocked(face, diceId, this.unlockDice.bind(this));
 			}
 		};
 
@@ -880,6 +986,7 @@ class Dice {
 		size = 1,
 		initialPosition = new THREE.Vector3(0, 0, 0),
 		materials = {},
+		lockedSize = 1,
 		targetX = 0,
 		targetY = 0
 	) {
@@ -920,6 +1027,7 @@ class Dice {
 		this.disablePhysics;
 		this.animation = false;
 		this.rollIndex = 0;
+		this.lockedSize = lockedSize; // Tamaño del dado cuando está bloqueado
 		// Asegúrate de sincronizar la malla con el cuerpo físico en el bucle de animación
 	}
 
