@@ -296,6 +296,105 @@ export default class DiceScene {
 		return newDice.id;
 	}
 
+	updateDiceFaces(ownerId, newFaces) {
+		for (const [diceId, dice] of this.dices.entries()) {
+			if (dice.ownerId !== ownerId) continue; // Solo procesar dados con el ownerId especificado
+
+			const loader = new THREE.TextureLoader();
+			const faceOrder = [1, 3, 6, 5, 2, 4]; // Orden de las caras del cubo
+
+			// Actualizar materiales de las caras
+			const newMaterials = faceOrder.map((face, index) => {
+				const diceAnimationFrame = newFaces[face - 1][1];
+				const dicePip = newFaces[face - 1][0];
+
+				const fallbackTexture = this.createNumberTexture(dicePip, dice.color);
+				const material = new THREE.MeshBasicMaterial({
+					map: fallbackTexture,
+				});
+
+				loader.load(
+					`/dice${diceAnimationFrame}.png`,
+					(tex) => {
+						tex.minFilter = THREE.LinearFilter;
+						tex.magFilter = THREE.LinearFilter;
+						tex.needsUpdate = true;
+
+						// Reemplazar textura con la imagen cargada
+						material.map = this.createNumberTextureWithImage(
+							dicePip,
+							tex,
+							dice.color
+						);
+						material.needsUpdate = true;
+					},
+					undefined,
+					() => {
+						console.warn(
+							`Failed to load texture /dice${diceAnimationFrame}.png, using fallback.`
+						);
+					}
+				);
+
+				return material;
+			});
+
+			// Asignar los nuevos materiales al dado
+			dice.diceMesh.material = newMaterials;
+			dice.diceMesh.material.needsUpdate = true;
+		}
+	}
+
+	createNumberTexture(num, color) {
+		const size = 128;
+		const canvas = document.createElement("canvas");
+		canvas.width = size;
+		canvas.height = size;
+		const ctx = canvas.getContext("2d");
+
+		ctx.strokeStyle = color;
+		ctx.lineWidth = 15;
+		ctx.strokeRect(0, 0, size, size);
+
+		ctx.fillStyle = "white";
+		ctx.font = "bold 96px LeagueSpartan-Bold";
+		ctx.textAlign = "center";
+		ctx.textBaseline = "middle";
+		ctx.fillText(num.toString(), size / 2, size / 2);
+
+		const texture = new THREE.CanvasTexture(canvas);
+		texture.minFilter = THREE.LinearFilter;
+		texture.magFilter = THREE.LinearFilter;
+		return texture;
+	}
+
+	createNumberTextureWithImage(num, tex, color) {
+		const size = 128;
+		const canvas = document.createElement("canvas");
+		canvas.width = size;
+		canvas.height = size;
+		const ctx = canvas.getContext("2d");
+
+		ctx.drawImage(tex.image, 0, 0, size, size);
+
+		ctx.strokeStyle = color;
+		ctx.lineWidth = 15;
+		ctx.strokeRect(0, 0, size, size);
+
+		ctx.fillStyle = "white";
+		ctx.font = "bold 39px LeagueSpartan-Bold";
+		if (num > 0) {
+			ctx.textAlign = "center";
+			ctx.textBaseline = "middle";
+			ctx.fillText(num.toString(), size / 2, size / 2);
+		}
+
+		const texture = new THREE.CanvasTexture(canvas);
+		texture.minFilter = THREE.LinearFilter;
+		texture.magFilter = THREE.LinearFilter;
+		texture.colorSpace = THREE.SRGBColorSpace;
+		return texture;
+	}
 	destroyDice(diceId) {
 		const dice = this.dices.get(diceId);
 		if (!dice) return;
